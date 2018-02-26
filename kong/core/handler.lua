@@ -519,10 +519,17 @@ return {
   },
   header_filter = {
     before = function(ctx)
+      local var = ngx.var
+      local header = ngx.header
+
       if ctx.KONG_PROXIED then
         local now = get_now()
         ctx.KONG_WAITING_TIME = now - ctx.KONG_ACCESS_ENDED_AT -- time spent waiting for a response from upstream
         ctx.KONG_HEADER_FILTER_STARTED_AT = now
+      end
+
+      if singletons.configuration.server_tokens then
+        header[constants.HEADERS.UPSTREAM_STATUS]  = var.upstream_status
       end
     end,
     after = function(ctx)

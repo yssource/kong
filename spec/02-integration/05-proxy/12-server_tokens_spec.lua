@@ -83,7 +83,8 @@ describe("Server Tokens", function()
 
     teardown(helpers.stop_kong)
 
-    it("should return Kong 'Via' header but not change the 'Server' header when request was proxied", function()
+    it("should return Kong 'Via'and " .. constants.HEADERS.UPSTREAM_STATUS .. 
+      " headers but not change the 'Server' header when request was proxied", function()
       local res = assert(client:send {
         method  = "GET",
         path    = "/get",
@@ -95,9 +96,11 @@ describe("Server Tokens", function()
       assert.res_status(200, res)
       assert.not_equal(default_server_header, res.headers["server"])
       assert.equal(default_server_header, res.headers["via"])
+      assert.equal('200', res.headers[constants.HEADERS.UPSTREAM_STATUS])
     end)
 
-    it("should return Kong 'Server' header but not the Kong 'Via' header when no API matched (no proxy)", function()
+    it("should return Kong 'Server' header but not the Kong 'Via' and " .. 
+      constants.HEADERS.UPSTREAM_STATUS .. " headers when no API matched (no proxy)", function()
       local res = assert(client:send {
         method  = "GET",
         path    = "/get",
@@ -109,6 +112,7 @@ describe("Server Tokens", function()
       assert.res_status(404, res)
       assert.equal(default_server_header, res.headers["server"])
       assert.is_nil(res.headers["via"])
+      assert.is_nil(res.headers[constants.HEADERS.UPSTREAM_STATUS])
     end)
 
   end)
@@ -122,7 +126,8 @@ describe("Server Tokens", function()
 
     teardown(helpers.stop_kong)
 
-    it("should not return Kong 'Via' header but it should forward the 'Server' header when request was proxied", function()
+    it("should not return Kong 'Via' or " .. constants.HEADERS.UPSTREAM_STATUS .. 
+      " header but it should forward the 'Server' header when request was proxied", function()
       local res = assert(client:send {
         method  = "GET",
         path    = "/get",
@@ -134,6 +139,7 @@ describe("Server Tokens", function()
       assert.res_status(200, res)
       assert.response(res).has.header "server"
       assert.response(res).has_not.header "via"
+      assert.is_nil(res.headers[constants.HEADERS.UPSTREAM_STATUS])
       assert.not_equal(default_server_header, res.headers["server"])
     end)
 
