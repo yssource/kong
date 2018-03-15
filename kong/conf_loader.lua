@@ -61,8 +61,7 @@ local CONF_INFERENCES = {
   nginx_user = {typ = "string"},
   nginx_worker_processes = {typ = "string"},
   upstream_keepalive = {typ = "number"},
-  server_tokens = {typ = "boolean"},
-  latency_tokens = {typ = "boolean"},
+  headers = {typ = "array"},
   trusted_ips = {typ = "array"},
   real_ip_header = {typ = "string"},
   real_ip_recursive = {typ = "ngx_boolean"},
@@ -293,6 +292,40 @@ local function check_and_infer(conf)
       errors[#errors+1] = "dns_hostsfile: file does not exist"
     end
   end
+
+  local headers = constants.HEADERS
+  local header_tokens = {
+    [headers.PROXY_LATENCY] = false,
+    [headers.UPSTREAM_LATENCY] = false,
+    [headers.SERVER] = false,
+    [headers.VIA] = false,
+    server_tokens = false,
+    latency_tokens = false,
+  }
+  if conf.headers then
+    for _, token in ipairs(conf.headers) do
+      if token == "off" then
+          break
+
+      elseif header_tokens[token] == nil then
+        errors[#errors+1] = "tokens: invalid entry '" .. tostring(token) .. "'"
+
+      else
+        header_tokens[token] = true
+      end
+    end
+
+    if header_tokens.server_tokens then
+      header_tokens[headers.SERVER] = true
+      header_tokens[headers.VIA] = true
+    end
+
+    if header_tokens.latency_tokens then
+      header_tokens[headers.PROXY_LATENCY] = true
+      header_tokens[headers.UPSTREAM_LATENCY] = true
+    end
+  end
+  conf.headers = header_tokens
 
   if conf.dns_order then
     local allowed = { LAST = true, A = true, CNAME = true, SRV = true }
