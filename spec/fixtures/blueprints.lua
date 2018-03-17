@@ -72,7 +72,7 @@ function _M.new(dao, db)
     }
   end)
 
-  res.ssl_certificates = new_blueprint(dao.ssl_certificates, function()
+  res.ssl_certificates = new_blueprint(db.ssl_certificates, function()
     return {
       cert = ssl_fixtures.cert,
       key  = ssl_fixtures.key,

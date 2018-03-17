@@ -31,7 +31,7 @@ local function find_certificate(sni)
 
   -- fetch SSL certificate for this SNI
 
-  local ssl_certificate, err = singletons.dao.ssl_certificates:find {
+  local ssl_certificate, err = singletons.db.ssl_certificates:select {
     id = row.ssl_certificate_id
   }
   if err then

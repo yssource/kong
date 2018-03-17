@@ -1,5 +1,6 @@
 local log = require "kong.cmd.utils.log"
 
+local migration_helpers = require "kong.dao.migrations.helpers"
 
 return {
   {
@@ -240,7 +241,7 @@ return {
   {
     name = "2016-12-14-172100_move_ssl_certs_to_core",
     up = [[
-      CREATE TABLE ssl_certificates(
+      CREATE TABLE IF NOT EXISTS ssl_certificates(
         id uuid PRIMARY KEY,
         cert text,
         key text ,
@@ -628,5 +629,16 @@ return {
       CREATE INDEX IF NOT EXISTS ON targets(target);
     ]],
     down = nil
-  }
+  },
+  {
+    name = "2018-03-22-141700_partition_ssl_certificates",
+    up = function(_, _, dao)
+      local _, err = migration_helpers.partition_cassandra_table(dao, "ssl_certificates")
+      if err then
+        return err
+      end
+    end,
+    down = nil
+  },
+
 }

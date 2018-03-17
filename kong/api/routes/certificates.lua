@@ -1,7 +1,31 @@
-local crud = require "kong.api.crud_helpers"
 local utils = require "kong.tools.utils"
 local cjson = require "cjson"
+local Errors      = require "kong.db.errors"
+local singletons  = require "kong.singletons"
+local responses   = require "kong.tools.responses"
+local app_helpers = require "lapis.application"
 
+local db = singletons.db
+
+local ERRORS_HTTP_CODES = {
+  [Errors.codes.INVALID_PRIMARY_KEY]   = 400,
+  [Errors.codes.SCHEMA_VIOLATION]      = 400,
+  [Errors.codes.PRIMARY_KEY_VIOLATION] = 400,
+  [Errors.codes.FOREIGN_KEY_VIOLATION] = 400,
+  [Errors.codes.UNIQUE_VIOLATION]      = 409,
+  [Errors.codes.NOT_FOUND]             = 404,
+  [Errors.codes.INVALID_OFFSET]        = 400,
+  [Errors.codes.DATABASE_ERROR]        = 500,
+}
+
+local function handle_error(err_t)
+  local status = ERRORS_HTTP_CODES[err_t.code]
+  if not status or status == 500 then
+    return app_helpers.yield_error(err_t)
+  end
+
+  responses.send(status, err_t)
+end
 
 local function create_certificate(self, dao_factory, helpers)
   local snis
@@ -42,9 +66,9 @@ local function create_certificate(self, dao_factory, helpers)
     end
   end
 
-  local ssl_cert, err = dao_factory.ssl_certificates:insert(self.params)
-  if err then
-    return helpers.yield_error(err)
+  local ssl_cert, _, err_t = db.ssl_certificates:insert(self.params)
+  if err_t then
+    return handle_error(err_t)
   end
 
   ssl_cert.snis = setmetatable({}, cjson.empty_array_mt)
@@ -73,11 +97,11 @@ end
 
 local function update_certificate(self, dao_factory, helpers)
    -- check if exists
-   local ssl_cert, err = dao_factory.ssl_certificates:find {
+  local ssl_cert, _, err_t = db.ssl_certificates:select {
     id = self.params.id
   }
-  if err then
-    return helpers.yield_error(err)
+  if err_t then
+    return handle_error(err_t)
   end
 
   if not ssl_cert then
@@ -142,11 +166,9 @@ local function update_certificate(self, dao_factory, helpers)
   if self.params.key or self.params.cert then
     self.params.created_at = ssl_cert.created_at
 
-    ssl_cert, err = dao_factory.ssl_certificates:update(self.params, {
-      id = self.params.id,
-    }, { full = true })
-    if err then
-      return helpers.yield_error(err)
+    ssl_cert, _, err_t = db.ssl_certificates:update({id = ssl_cert.id }, self.params)
+    if err_t then
+      return handle_error(err_t)
     end
   end
 
@@ -203,30 +225,37 @@ return {
 
 
     GET = function(self, dao_factory, helpers)
-      local ssl_certificates, err = dao_factory.ssl_certificates:find_all()
-      if err then
-        return helpers.yield_error(err)
+      local data, _, err_t, offset = db.ssl_certificates:page(self.params.size,
+                                                              self.params.offset)
+      if err_t then
+        return handle_error(err_t)
       end
 
-      for i = 1, #ssl_certificates do
+      local next_page = offset and ("/certificates?offset=%s"):format(ngx.escape_uri(offset))
+                               or ngx.null
+
+      for i = 1, #data do
+        local ssl_certificate = data[i]
+
         local rows, err = dao_factory.ssl_servers_names:find_all {
-          ssl_certificate_id = ssl_certificates[i].id
+          ssl_certificate_id = ssl_certificate.id
         }
         if err then
           return helpers.yield_error(err)
         end
 
-        ssl_certificates[i].snis = setmetatable({}, cjson.empty_array_mt)
+        ssl_certificate.snis = setmetatable({}, cjson.empty_array_mt)
 
         for j = 1, #rows do
-          ssl_certificates[i].snis[j] = rows[j].name
+          ssl_certificate.snis[j] = rows[j].name
         end
       end
 
-      return helpers.responses.send_HTTP_OK({
-        data = #ssl_certificates > 0 and ssl_certificates or cjson.empty_array,
-        total = #ssl_certificates,
-      })
+      return helpers.responses.send_HTTP_OK {
+        data   = data,
+        offset = offset,
+        next   = next_page,
+      }
     end,
 
 
@@ -272,11 +301,11 @@ return {
 
 
     GET = function(self, dao_factory, helpers)
-      local row, err = dao_factory.ssl_certificates:find {
+      local row, _, err_t = db.ssl_certificates:select {
         id = self.ssl_certificate_id
       }
-      if err then
-        return helpers.yield_error(err)
+      if err_t then
+        return handle_error(err_t)
       end
 
       if not row then
@@ -309,9 +338,15 @@ return {
 
 
     DELETE = function(self, dao_factory, helpers)
-      return crud.delete({
-        id = self.ssl_certificate_id
-      }, dao_factory.ssl_certificates)
+      local _, _, err_t = db.ssl_certificates:delete({
+        id = self.ssl_certificate_id,
+      })
+      if err_t then
+        return handle_error(err_t)
+      end
+
+      return helpers.responses.send_HTTP_NO_CONTENT()
     end,
+
   }
 }
