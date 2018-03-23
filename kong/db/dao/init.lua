@@ -158,6 +158,7 @@ function _M.new(schema, strategy, errors)
     schema   = schema,
     strategy = strategy,
     errors   = errors,
+    super    = DAO, -- allows custom daos to do self.super.delete(self, ...)
   }
 
   if schema.dao then
